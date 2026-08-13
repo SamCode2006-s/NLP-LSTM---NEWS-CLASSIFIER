@@ -1,4 +1,9 @@
 import os
+
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
+os.environ["TF_NUM_INTEROP_THREADS"] = "1"
+
 import re
 import string
 import pickle
@@ -6,6 +11,10 @@ from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
+
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
+
 from flask import Flask, jsonify, render_template, request
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from nltk.corpus import stopwords

@@ -47,10 +47,21 @@ button.addEventListener("click", async () => {
       body: JSON.stringify({ text })
     });
 
-    const data = await response.json();
+    const raw = await response.text();
+
+    let data;
+
+    try {
+        data = JSON.parse(raw);
+    } catch (error) {
+        console.error("Raw server response:", raw);
+        throw new Error(
+            `Server returned an invalid response (${response.status}).`
+        );
+    }
 
     if (!response.ok) {
-      throw new Error(data.error || "Prediction failed.");
+        throw new Error(data.error || "Prediction failed.");
     }
 
     const predictions = data.predictions || [];
