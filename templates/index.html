@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0b0b12">
+  <title>NLP — LSTM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Playfair+Display:ital,wght@1,500;1,600;1,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="cube-field" aria-hidden="true">
+    <span class="cube c1"></span>
+    <span class="cube c2"></span>
+    <span class="cube c3"></span>
+    <span class="cube c4"></span>
+    <span class="cube c5"></span>
+    <span class="cube c6"></span>
+    <span class="cube c7"></span>
+    <span class="cube c8"></span>
+  </div>
+
+  <main class="shell">
+    <section class="hero">
+      <div class="brand-chip">NLP + LSTM</div>
+      <h1>NEWS CLASSIFICATION</h1>
+      <p class="hero-line">Read the Story. Reveal the Category.</p>
+    </section>
+
+    <section class="panel" aria-label="NLP classifier">
+      <div class="panel-top">
+        <span>INPUT</span>
+        <span class="status"><i></i> READY</span>
+      </div>
+
+      <textarea
+        id="newsText"
+        maxlength="12000"
+        placeholder="Paste a headline, story, or news text..."
+        spellcheck="true"
+      ></textarea>
+
+      <div class="controls">
+        <span id="count">0 / 12000</span>
+        <button id="predictBtn" type="button">
+          <span>CLASSIFY</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M5 12h13M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <div id="errorBox" class="message error" role="alert"></div>
+
+      <section id="result" class="result" aria-live="polite">
+        <div class="result-label">RESULT</div>
+        <div class="result-main">
+          <div>
+            <div id="topCategory" class="top-category">—</div>
+            <div id="topConfidence" class="confidence">—</div>
+          </div>
+          <div class="orb" aria-hidden="true"></div>
+        </div>
+
+        <div class="bars">
+          <div class="bar-row">
+            <span id="cat0">—</span>
+            <div class="track"><div id="fill0" class="fill"></div></div>
+            <b id="pct0">—</b>
+          </div>
+          <div class="bar-row">
+            <span id="cat1">—</span>
+            <div class="track"><div id="fill1" class="fill"></div></div>
+            <b id="pct1">—</b>
+          </div>
+          <div class="bar-row">
+            <span id="cat2">—</span>
+            <div class="track"><div id="fill2" class="fill"></div></div>
+            <b id="pct2">—</b>
+          </div>
+        </div>
+      </section>
+    </section>
+    
+    <section class="categories-section">
+      <div class="section-heading">
+        <span>EXPLORE</span>
+        <h2>News Categories</h2>
+      </div>
+      <div class="category-grid">
+        {% for category in categories %}
+        <div class="category-card">
+          <span class="category-number">
+            {{ "%02d"|format(loop.index) }}
+          </span>
+
+          <span class="category-name">
+            {{ category }}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      </section>
+    </main>
+
+  <footer>
+    <span>PROJECT MEMBERS</span>
+    <strong>SAMBHAV SINGH CHAUDAHRY</strong>
+    <span class="dot">•</span>
+    <strong>MAHAVIRSINGH DEVAL</strong>
+  </footer>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
