@@ -6,7 +6,6 @@ from pathlib import Path
 from threading import Lock
 
 import numpy as np
-
 from flask import Flask, jsonify, render_template, request
 
 from nltk.corpus import stopwords
@@ -21,11 +20,16 @@ from ai_edge_litert.interpreter import Interpreter
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
-MODEL_DIR = BASE_DIR / "model"
 
+MODEL_DIR = BASE_DIR / "model"
 NLTK_DATA = BASE_DIR / "nltk_data"
+
 nltk.data.path.append(str(NLTK_DATA))
 
+
+# ============================================================
+# CHECK NLTK RESOURCES
+# ============================================================
 
 def check_nltk_data():
     required_resources = [
@@ -46,11 +50,17 @@ def check_nltk_data():
 
 check_nltk_data()
 
+
 # ============================================================
-# LOAD TFLITE / LITERT MODEL
+# LOAD TFLITE MODEL
 # ============================================================
 
 MODEL_PATH = MODEL_DIR / "news_classifier.tflite"
+
+if not MODEL_PATH.exists():
+    raise FileNotFoundError(
+        f"Model file not found: {MODEL_PATH}"
+    )
 
 interpreter = Interpreter(
     model_path=str(MODEL_PATH)
@@ -66,21 +76,49 @@ OUTPUT_INDEX = output_details[0]["index"]
 
 INPUT_DTYPE = input_details[0]["dtype"]
 
-# Your converted model has fixed shape [1, 150]
+# Your converted model is [1, 150]
 MAX_LEN = int(input_details[0]["shape"][1])
 
-# Protect interpreter from concurrent access
 interpreter_lock = Lock()
 
 
 # ============================================================
-# LOAD TOKENIZER + LABEL ENCODER
+# LOAD TOKENIZER DATA
 # ============================================================
 
-with open(MODEL_DIR / "tokenizer.pkl", "rb") as f:
-    tokenizer = pickle.load(f)
+TOKENIZER_PATH = MODEL_DIR / "tokenizer_data.pkl"
 
-with open(MODEL_DIR / "label_encoder.pkl", "rb") as f:
+if not TOKENIZER_PATH.exists():
+    raise FileNotFoundError(
+        f"Tokenizer file not found: {TOKENIZER_PATH}"
+    )
+
+with open(TOKENIZER_PATH, "rb") as f:
+    tokenizer_data = pickle.load(f)
+
+
+word_index = tokenizer_data["word_index"]
+num_words = tokenizer_data.get("num_words")
+oov_token = tokenizer_data.get("oov_token")
+
+oov_index = None
+
+if oov_token:
+    oov_index = word_index.get(oov_token)
+
+
+# ============================================================
+# LOAD LABEL ENCODER
+# ============================================================
+
+LABEL_ENCODER_PATH = MODEL_DIR / "label_encoder.pkl"
+
+if not LABEL_ENCODER_PATH.exists():
+    raise FileNotFoundError(
+        f"Label encoder not found: {LABEL_ENCODER_PATH}"
+    )
+
+with open(LABEL_ENCODER_PATH, "rb") as f:
     label_encoder = pickle.load(f)
 
 
@@ -88,7 +126,7 @@ CATEGORIES = label_encoder.classes_.tolist()
 
 
 # ============================================================
-# TEXT PREPROCESSING
+# NLTK PREPROCESSING
 # ============================================================
 
 stop_words = set(
@@ -99,22 +137,27 @@ lemmatizer = WordNetLemmatizer()
 
 
 def preprocess_text(text: str) -> str:
-    """Match the original notebook preprocessing."""
+    """
+    Match the preprocessing used during model training.
+    """
 
     text = str(text).lower()
 
+    # Remove URLs
     text = re.sub(
         r"http\S+|www\S+|https\S+",
         "",
         text
     )
 
+    # Remove HTML
     text = re.sub(
         r"<.*?>",
         "",
         text
     )
 
+    # Remove punctuation
     text = text.translate(
         str.maketrans(
             "",
@@ -123,20 +166,24 @@ def preprocess_text(text: str) -> str:
         )
     )
 
+    # Remove numbers
     text = re.sub(
         r"\d+",
         "",
         text
     )
 
+    # Tokenize by whitespace
     tokens = text.split()
 
+    # Remove stopwords
     tokens = [
         word
         for word in tokens
         if word not in stop_words
     ]
 
+    # Lemmatize
     tokens = [
         lemmatizer.lemmatize(word)
         for word in tokens
@@ -146,27 +193,64 @@ def preprocess_text(text: str) -> str:
 
 
 # ============================================================
-# TOKENIZER + PADDING
+# TOKENIZER REPLACEMENT
+# ============================================================
+
+def text_to_sequence(text: str):
+    """
+    Equivalent to Keras tokenizer.texts_to_sequences()
+    using the saved word_index dictionary.
+    """
+
+    tokens = text.split()
+
+    sequence = []
+
+    for word in tokens:
+
+        index = word_index.get(word)
+
+        # Unknown word
+        if index is None:
+
+            if oov_index is not None:
+                index = oov_index
+            else:
+                continue
+
+        # Respect tokenizer num_words limit
+        if num_words is not None and index >= num_words:
+
+            if oov_index is not None:
+                index = oov_index
+            else:
+                continue
+
+        sequence.append(index)
+
+    return sequence
+
+
+# ============================================================
+# CREATE MODEL INPUT
 # ============================================================
 
 def make_padded_input(text: str) -> np.ndarray:
 
     cleaned = preprocess_text(text)
 
-    sequence = tokenizer.texts_to_sequences(
-        [cleaned]
-    )
+    sequence = text_to_sequence(cleaned)
 
+    # Fixed input shape: [1, 150]
     padded = np.zeros(
         (1, MAX_LEN),
         dtype=np.int32
     )
 
-    if sequence and sequence[0]:
+    sequence = sequence[:MAX_LEN]
 
-        seq = sequence[0][:MAX_LEN]
-
-        padded[0, :len(seq)] = seq
+    if sequence:
+        padded[0, :len(sequence)] = sequence
 
     # TFLite model expects float32
     return padded.astype(INPUT_DTYPE)
@@ -193,6 +277,7 @@ def predict_text(text: str):
             OUTPUT_INDEX
         )[0].copy()
 
+    # Top 3 classes
     top_indices = np.argsort(
         probabilities
     )[-3:][::-1]
@@ -217,11 +302,15 @@ def predict_text(text: str):
 
 
 # ============================================================
-# FLASK
+# FLASK APP
 # ============================================================
 
 app = Flask(__name__)
 
+
+# ============================================================
+# HOME
+# ============================================================
 
 @app.get("/")
 def index():
@@ -231,6 +320,10 @@ def index():
         categories=CATEGORIES
     )
 
+
+# ============================================================
+# PREDICTION API
+# ============================================================
 
 @app.post("/predict")
 def predict():
@@ -272,10 +365,13 @@ def predict():
         )
 
         return jsonify({
-            "error":
-                "Prediction failed. Check server logs."
+            "error": "Prediction failed. Check server logs."
         }), 500
 
+
+# ============================================================
+# HEALTH CHECK
+# ============================================================
 
 @app.get("/health")
 def health():
@@ -284,6 +380,10 @@ def health():
         "status": "ok"
     })
 
+
+# ============================================================
+# LOCAL DEVELOPMENT
+# ============================================================
 
 if __name__ == "__main__":
 
